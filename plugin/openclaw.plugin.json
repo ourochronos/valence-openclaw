@@ -1,0 +1,99 @@
+{
+  "id": "memory-valence",
+  "kind": "memory",
+  "uiHints": {
+    "serverUrl": {
+      "label": "Server URL",
+      "placeholder": "http://localhost:8420",
+      "help": "Valence HTTP MCP server URL"
+    },
+    "authToken": {
+      "label": "Auth Token",
+      "sensitive": true,
+      "placeholder": "vt_...",
+      "help": "Bearer token for Valence server (or use ${VALENCE_AUTH_TOKEN})"
+    },
+    "autoRecall": {
+      "label": "Auto-Recall",
+      "help": "Inject relevant beliefs into context before agent runs"
+    },
+    "autoCapture": {
+      "label": "Auto-Capture",
+      "help": "Extract insights from conversations as beliefs"
+    },
+    "sessionTracking": {
+      "label": "Session Tracking",
+      "help": "Map OpenClaw sessions to Valence session lifecycle"
+    },
+    "exchangeRecording": {
+      "label": "Exchange Recording",
+      "help": "Record conversation turns as Valence exchanges"
+    },
+    "recallMaxResults": {
+      "label": "Recall Max Results",
+      "advanced": true,
+      "help": "Maximum beliefs to inject on auto-recall"
+    },
+    "recallMinScore": {
+      "label": "Recall Min Score",
+      "advanced": true,
+      "help": "Minimum relevance score for auto-recall (0-1)"
+    },
+    "captureDomains": {
+      "label": "Default Capture Domains",
+      "advanced": true,
+      "help": "Default domain path for auto-captured beliefs"
+    },
+    "memoryMdSync": {
+      "label": "MEMORY.md Sync",
+      "advanced": true,
+      "help": "Sync MEMORY.md from Valence beliefs as a disaster-recovery fallback"
+    },
+    "memoryMdPath": {
+      "label": "MEMORY.md Path",
+      "advanced": true,
+      "placeholder": "MEMORY.md",
+      "help": "Relative path for the MEMORY.md DR file"
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "serverUrl": {
+        "type": "string"
+      },
+      "authToken": {
+        "type": "string"
+      },
+      "autoRecall": {
+        "type": "boolean"
+      },
+      "autoCapture": {
+        "type": "boolean"
+      },
+      "sessionTracking": {
+        "type": "boolean"
+      },
+      "exchangeRecording": {
+        "type": "boolean"
+      },
+      "recallMaxResults": {
+        "type": "number"
+      },
+      "recallMinScore": {
+        "type": "number"
+      },
+      "captureDomains": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "memoryMdSync": {
+        "type": "boolean"
+      },
+      "memoryMdPath": {
+        "type": "string"
+      }
+    }
+  }
+}
