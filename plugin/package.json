@@ -1,6 +1,6 @@
 {
   "name": "@ourochronos/memory-valence",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenClaw memory plugin backed by Valence knowledge substrate — beliefs, sessions, patterns",
   "type": "module",
   "license": "MIT",
