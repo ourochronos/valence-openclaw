@@ -702,11 +702,11 @@ const valencePlugin = {
       { name: "pattern_reinforce" },
     );
 
-    // 15. memory_forget — Archive/forget beliefs (GDPR-compliant)
+    // 15. belief_archive — Archive/forget beliefs (GDPR-compliant)
     api.registerTool(
       {
-        name: "memory_forget",
-        label: "Forget",
+        name: "belief_archive",
+        label: "Archive Belief",
         description:
           "Archive or forget a belief. GDPR-compliant. " +
           "Maintains history chain — the original belief is superseded, not deleted. " +
@@ -720,7 +720,7 @@ const valencePlugin = {
             await mcpCall(cfg, "belief_supersede", {
               old_belief_id: params.belief_id,
               new_content: "[archived by user request]",
-              reason: "User requested removal via memory_forget",
+              reason: "User requested removal via belief_archive",
             });
             return {
               content: [{ type: "text" as const, text: `Belief ${params.belief_id} archived.` }],
@@ -751,7 +751,7 @@ const valencePlugin = {
               await mcpCall(cfg, "belief_supersede", {
                 old_belief_id: topMatch.id,
                 new_content: "[archived by user request]",
-                reason: "User requested removal via memory_forget",
+                reason: "User requested removal via belief_archive",
               });
               return {
                 content: [
@@ -792,7 +792,824 @@ const valencePlugin = {
           };
         },
       },
-      { name: "memory_forget" },
+      { name: "belief_archive" },
+    );
+
+    // =====================================================================
+    // TRUST & VERIFICATION TOOLS — P2P knowledge validation
+    // =====================================================================
+
+    // 16. trust_check — Check trust levels for entities/nodes
+    api.registerTool(
+      {
+        name: "trust_check",
+        label: "Check Trust",
+        description:
+          "Check trust levels for entities or federation nodes on a specific topic/domain. " +
+          "Returns entities with high-confidence beliefs in the domain and trusted federation nodes. " +
+          "Requires federation peers for cross-node trust data.",
+        parameters: Type.Object({
+          topic: Type.String({ description: "Topic or domain to check trust for" }),
+          entity_name: Type.Optional(Type.String({ description: "Specific entity to check trust for" })),
+          include_federated: Type.Optional(Type.Boolean({ description: "Include federated node trust" })),
+          min_trust: Type.Optional(Type.Number({ description: "Minimum trust threshold (0-1)" })),
+          domain: Type.Optional(Type.String({ description: "Domain scope for trust scoring" })),
+          limit: Type.Optional(Type.Integer({ description: "Max results (default: 10)" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "trust_check", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "trust_check" },
+    );
+
+    // 17. belief_corroboration — Get corroboration details
+    api.registerTool(
+      {
+        name: "belief_corroboration",
+        label: "Belief Corroboration",
+        description:
+          "Get corroboration details for a belief — how many independent sources confirm it. " +
+          "Higher corroboration count indicates multiple independent sources agree.",
+        parameters: Type.Object({
+          belief_id: Type.String({ description: "UUID of the belief" }),
+        }),
+        async execute(_id: string, params: { belief_id: string }) {
+          const result = await mcpCall(cfg, "belief_corroboration", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "belief_corroboration" },
+    );
+
+    // 18. corroboration_submit — Submit corroboration between beliefs
+    api.registerTool(
+      {
+        name: "corroboration_submit",
+        label: "Submit Corroboration",
+        description:
+          "Submit a corroboration between two beliefs. Corroboration is independent verification — " +
+          "two beliefs reaching the same conclusion through different evidence. " +
+          "Requires semantic similarity >= 0.85.",
+        parameters: Type.Object({
+          primary_belief_id: Type.String({ description: "UUID of the belief being corroborated" }),
+          corroborating_belief_id: Type.String({ description: "UUID of the supporting belief" }),
+          primary_holder: Type.String({ description: "DID of the primary belief holder" }),
+          corroborator: Type.String({ description: "DID of the corroborator" }),
+          semantic_similarity: Type.Number({ description: "How similar the claims are (must be >= 0.85)" }),
+          evidence_sources_a: Type.Optional(Type.Array(Type.String(), { description: "Evidence sources for primary belief" })),
+          evidence_sources_b: Type.Optional(Type.Array(Type.String(), { description: "Evidence sources for corroborating belief" })),
+          corroborator_reputation: Type.Optional(Type.Number({ description: "Reputation of the corroborator (0-1)" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "corroboration_submit", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "corroboration_submit" },
+    );
+
+    // 19. corroboration_list — List corroborations for a belief
+    api.registerTool(
+      {
+        name: "corroboration_list",
+        label: "List Corroborations",
+        description: "List corroborations for a belief.",
+        parameters: Type.Object({
+          belief_id: Type.String({ description: "UUID of the belief" }),
+        }),
+        async execute(_id: string, params: { belief_id: string }) {
+          const result = await mcpCall(cfg, "corroboration_list", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "corroboration_list" },
+    );
+
+    // =====================================================================
+    // SHARING TOOLS — Share beliefs with trusted peers
+    // =====================================================================
+
+    // 20. belief_share — Share a belief via DID
+    api.registerTool(
+      {
+        name: "belief_share",
+        label: "Share Belief",
+        description:
+          "Share a belief with a specific person via their DID. " +
+          "Intents: know_me (private 1:1), work_with_me (bounded group), " +
+          "learn_from_me (cascading), use_this (public). Requires federation.",
+        parameters: Type.Object({
+          belief_id: Type.String({ description: "UUID of the belief to share" }),
+          recipient_did: Type.String({ description: "DID of the person to share with" }),
+          intent: Type.Optional(stringEnum(["know_me", "work_with_me", "learn_from_me", "use_this"], { description: "Sharing intent" })),
+          max_hops: Type.Optional(Type.Integer({ description: "Max reshare hops" })),
+          expires_at: Type.Optional(Type.String({ description: "ISO 8601 expiration timestamp" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "belief_share", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "belief_share" },
+    );
+
+    // 21. belief_shares_list — List shares
+    api.registerTool(
+      {
+        name: "belief_shares_list",
+        label: "List Shares",
+        description: "List shares — outgoing (beliefs you've shared) or incoming (shared with you).",
+        parameters: Type.Object({
+          direction: Type.Optional(stringEnum(["outgoing", "incoming"], { description: "Direction" })),
+          belief_id: Type.Optional(Type.String({ description: "Filter to specific belief" })),
+          include_revoked: Type.Optional(Type.Boolean({ description: "Include revoked shares" })),
+          limit: Type.Optional(Type.Integer({ description: "Max results" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "belief_shares_list", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "belief_shares_list" },
+    );
+
+    // 22. belief_share_revoke — Revoke a share
+    api.registerTool(
+      {
+        name: "belief_share_revoke",
+        label: "Revoke Share",
+        description: "Revoke a previously created share. The recipient will no longer have access.",
+        parameters: Type.Object({
+          share_id: Type.String({ description: "UUID of the share to revoke" }),
+          reason: Type.Optional(Type.String({ description: "Reason for revocation" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "belief_share_revoke", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "belief_share_revoke" },
+    );
+
+    // =====================================================================
+    // VERIFICATION TOOLS — Stake reputation to validate beliefs
+    // =====================================================================
+
+    // 23. verification_submit
+    api.registerTool(
+      {
+        name: "verification_submit",
+        label: "Submit Verification",
+        description:
+          "Submit a verification for a belief. Verifiers stake reputation to validate or challenge beliefs. " +
+          "Finding contradictions earns higher rewards than confirmations.",
+        parameters: Type.Object({
+          belief_id: Type.String({ description: "UUID of the belief to verify" }),
+          verifier_id: Type.String({ description: "DID of the verifier" }),
+          result: stringEnum(["confirmed", "contradicted", "uncertain", "partial"], { description: "Verification result" }),
+          evidence: Type.Array(Type.Object({
+            type: Type.Optional(stringEnum(["external", "belief_reference", "observation", "derivation"])),
+            relevance: Type.Optional(Type.Number()),
+            contribution: Type.Optional(stringEnum(["supports", "contradicts", "neutral"])),
+          }), { description: "Evidence supporting the verification" }),
+          stake_amount: Type.Number({ description: "Reputation to stake" }),
+          reasoning: Type.Optional(Type.String({ description: "Reasoning" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "verification_submit", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "verification_submit" },
+    );
+
+    // 24. verification_accept
+    api.registerTool(
+      {
+        name: "verification_accept",
+        label: "Accept Verification",
+        description: "Accept a pending verification after the validation window. Triggers reputation updates.",
+        parameters: Type.Object({
+          verification_id: Type.String({ description: "UUID of the verification" }),
+        }),
+        async execute(_id: string, params: { verification_id: string }) {
+          const result = await mcpCall(cfg, "verification_accept", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "verification_accept" },
+    );
+
+    // 25. verification_get
+    api.registerTool(
+      {
+        name: "verification_get",
+        label: "Get Verification",
+        description: "Get details of a specific verification by ID.",
+        parameters: Type.Object({
+          verification_id: Type.String({ description: "UUID of the verification" }),
+        }),
+        async execute(_id: string, params: { verification_id: string }) {
+          const result = await mcpCall(cfg, "verification_get", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "verification_get" },
+    );
+
+    // 26. verification_list
+    api.registerTool(
+      {
+        name: "verification_list",
+        label: "List Verifications",
+        description: "List all verifications for a belief — confirmed, contradicted, or disputed.",
+        parameters: Type.Object({
+          belief_id: Type.String({ description: "UUID of the belief" }),
+        }),
+        async execute(_id: string, params: { belief_id: string }) {
+          const result = await mcpCall(cfg, "verification_list", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "verification_list" },
+    );
+
+    // 27. verification_summary
+    api.registerTool(
+      {
+        name: "verification_summary",
+        label: "Verification Summary",
+        description: "Get verification summary for a belief — counts by result type, total stake, consensus result.",
+        parameters: Type.Object({
+          belief_id: Type.String({ description: "UUID of the belief" }),
+        }),
+        async execute(_id: string, params: { belief_id: string }) {
+          const result = await mcpCall(cfg, "verification_summary", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "verification_summary" },
+    );
+
+    // =====================================================================
+    // DISPUTE TOOLS — Challenge verifications
+    // =====================================================================
+
+    // 28. dispute_submit
+    api.registerTool(
+      {
+        name: "dispute_submit",
+        label: "Submit Dispute",
+        description:
+          "Submit a dispute against a verification. Requires staking reputation. " +
+          "Winning earns rewards; losing forfeits stake.",
+        parameters: Type.Object({
+          verification_id: Type.String({ description: "UUID of the verification to dispute" }),
+          disputer_id: Type.String({ description: "DID of the disputer" }),
+          counter_evidence: Type.Array(Type.Object({
+            type: Type.Optional(stringEnum(["external", "belief_reference", "observation", "derivation"])),
+            relevance: Type.Optional(Type.Number()),
+            contribution: Type.Optional(stringEnum(["supports", "contradicts", "neutral"])),
+          }), { description: "Counter-evidence" }),
+          stake_amount: Type.Number({ description: "Reputation to stake" }),
+          dispute_type: stringEnum(["new_evidence", "methodology", "scope", "bias"], { description: "Type of dispute" }),
+          reasoning: Type.String({ description: "Reasoning for the dispute" }),
+          proposed_result: Type.Optional(stringEnum(["confirmed", "contradicted", "uncertain", "partial"], { description: "What the correct result should be" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "dispute_submit", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "dispute_submit" },
+    );
+
+    // 29. dispute_resolve
+    api.registerTool(
+      {
+        name: "dispute_resolve",
+        label: "Resolve Dispute",
+        description: "Resolve a pending dispute. Outcomes: upheld, overturned, modified, dismissed.",
+        parameters: Type.Object({
+          dispute_id: Type.String({ description: "UUID of the dispute" }),
+          outcome: stringEnum(["upheld", "overturned", "modified", "dismissed"], { description: "Resolution outcome" }),
+          resolution_reasoning: Type.String({ description: "Explanation" }),
+          resolution_method: Type.Optional(stringEnum(["automatic", "peer_review", "arbitration"], { description: "How resolved" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "dispute_resolve", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "dispute_resolve" },
+    );
+
+    // 30. dispute_get
+    api.registerTool(
+      {
+        name: "dispute_get",
+        label: "Get Dispute",
+        description: "Get details of a specific dispute by ID.",
+        parameters: Type.Object({
+          dispute_id: Type.String({ description: "UUID of the dispute" }),
+        }),
+        async execute(_id: string, params: { dispute_id: string }) {
+          const result = await mcpCall(cfg, "dispute_get", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "dispute_get" },
+    );
+
+    // =====================================================================
+    // REPUTATION & INCENTIVES — Track and earn reputation
+    // =====================================================================
+
+    // 31. reputation_get
+    api.registerTool(
+      {
+        name: "reputation_get",
+        label: "Get Reputation",
+        description: "Get reputation score for an identity — overall, domain-specific, verification count, and stake at risk.",
+        parameters: Type.Object({
+          identity_id: Type.String({ description: "DID of the identity (e.g., did:valence:alice)" }),
+        }),
+        async execute(_id: string, params: { identity_id: string }) {
+          const result = await mcpCall(cfg, "reputation_get", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "reputation_get" },
+    );
+
+    // 32. reputation_events
+    api.registerTool(
+      {
+        name: "reputation_events",
+        label: "Reputation Events",
+        description: "Get reputation event history — what actions caused increases or decreases.",
+        parameters: Type.Object({
+          identity_id: Type.String({ description: "DID of the identity" }),
+          limit: Type.Optional(Type.Integer({ description: "Max events (default: 50)" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "reputation_events", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "reputation_events" },
+    );
+
+    // 33. bounty_get
+    api.registerTool(
+      {
+        name: "bounty_get",
+        label: "Get Bounty",
+        description: "Get the discrepancy bounty for a belief. High-confidence beliefs have bounties for finding contradictions.",
+        parameters: Type.Object({
+          belief_id: Type.String({ description: "UUID of the belief" }),
+        }),
+        async execute(_id: string, params: { belief_id: string }) {
+          const result = await mcpCall(cfg, "bounty_get", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "bounty_get" },
+    );
+
+    // 34. bounty_list
+    api.registerTool(
+      {
+        name: "bounty_list",
+        label: "List Bounties",
+        description: "List available discrepancy bounties. Higher bounties = more valuable verification targets.",
+        parameters: Type.Object({
+          unclaimed_only: Type.Optional(Type.Boolean({ description: "Only unclaimed bounties" })),
+          limit: Type.Optional(Type.Integer({ description: "Max results" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "bounty_list", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "bounty_list" },
+    );
+
+    // 35. calibration_run
+    api.registerTool(
+      {
+        name: "calibration_run",
+        label: "Run Calibration",
+        description:
+          "Run calibration scoring — Brier score for how well-calibrated confidence claims are vs verification outcomes. " +
+          "Well-calibrated agents earn bonuses; poorly calibrated face penalties.",
+        parameters: Type.Object({
+          identity_id: Type.String({ description: "DID of the identity to score" }),
+          period_start: Type.Optional(Type.String({ description: "Start of period (YYYY-MM-DD)" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "calibration_run", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "calibration_run" },
+    );
+
+    // 36. calibration_history
+    api.registerTool(
+      {
+        name: "calibration_history",
+        label: "Calibration History",
+        description: "Get calibration score history for an identity.",
+        parameters: Type.Object({
+          identity_id: Type.String({ description: "DID of the identity" }),
+          limit: Type.Optional(Type.Integer({ description: "Max snapshots (default: 12)" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "calibration_history", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "calibration_history" },
+    );
+
+    // 37. rewards_pending
+    api.registerTool(
+      {
+        name: "rewards_pending",
+        label: "Pending Rewards",
+        description: "Get unclaimed rewards for an identity — from verifications, calibration, bounties, etc.",
+        parameters: Type.Object({
+          identity_id: Type.String({ description: "DID of the identity" }),
+        }),
+        async execute(_id: string, params: { identity_id: string }) {
+          const result = await mcpCall(cfg, "rewards_pending", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "rewards_pending" },
+    );
+
+    // 38. reward_claim
+    api.registerTool(
+      {
+        name: "reward_claim",
+        label: "Claim Reward",
+        description: "Claim a single pending reward, applying it to reputation. Subject to velocity limits.",
+        parameters: Type.Object({
+          reward_id: Type.String({ description: "UUID of the reward" }),
+        }),
+        async execute(_id: string, params: { reward_id: string }) {
+          const result = await mcpCall(cfg, "reward_claim", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "reward_claim" },
+    );
+
+    // 39. rewards_claim_all
+    api.registerTool(
+      {
+        name: "rewards_claim_all",
+        label: "Claim All Rewards",
+        description: "Claim all pending rewards. Claims in order until velocity limits are reached.",
+        parameters: Type.Object({
+          identity_id: Type.String({ description: "DID of the identity" }),
+        }),
+        async execute(_id: string, params: { identity_id: string }) {
+          const result = await mcpCall(cfg, "rewards_claim_all", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "rewards_claim_all" },
+    );
+
+    // 40. transfer_history
+    api.registerTool(
+      {
+        name: "transfer_history",
+        label: "Transfer History",
+        description: "Get reputation transfer history — stake forfeitures, bounty payouts, dispute settlements, calibration bonuses.",
+        parameters: Type.Object({
+          identity_id: Type.String({ description: "DID of the identity" }),
+          direction: Type.Optional(stringEnum(["both", "incoming", "outgoing"], { description: "Filter direction" })),
+          limit: Type.Optional(Type.Integer({ description: "Max transfers (default: 50)" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "transfer_history", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "transfer_history" },
+    );
+
+    // 41. velocity_status
+    api.registerTool(
+      {
+        name: "velocity_status",
+        label: "Velocity Status",
+        description: "Get current velocity status — daily/weekly gain tracking and remaining capacity before limits.",
+        parameters: Type.Object({
+          identity_id: Type.String({ description: "DID of the identity" }),
+        }),
+        async execute(_id: string, params: { identity_id: string }) {
+          const result = await mcpCall(cfg, "velocity_status", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "velocity_status" },
+    );
+
+    // =====================================================================
+    // CONSENSUS TOOLS — Trust layer elevation
+    // =====================================================================
+
+    // 42. consensus_status
+    api.registerTool(
+      {
+        name: "consensus_status",
+        label: "Consensus Status",
+        description:
+          "Get consensus status for a belief — current trust layer (L1-L4), corroboration count, " +
+          "finality level, challenge history. Beliefs start at L1 (personal) and elevate through corroboration.",
+        parameters: Type.Object({
+          belief_id: Type.String({ description: "UUID of the belief" }),
+        }),
+        async execute(_id: string, params: { belief_id: string }) {
+          const result = await mcpCall(cfg, "consensus_status", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "consensus_status" },
+    );
+
+    // 43. challenge_submit
+    api.registerTool(
+      {
+        name: "challenge_submit",
+        label: "Submit Challenge",
+        description: "Submit a challenge to a belief's consensus status. Cannot challenge L1 (personal) beliefs.",
+        parameters: Type.Object({
+          belief_id: Type.String({ description: "UUID of the belief to challenge" }),
+          challenger_id: Type.String({ description: "DID of the challenger" }),
+          reasoning: Type.String({ description: "Reasoning for the challenge" }),
+          evidence: Type.Optional(Type.Array(Type.Object({}), { description: "Supporting evidence" })),
+          stake_amount: Type.Optional(Type.Number({ description: "Reputation staked" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "challenge_submit", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "challenge_submit" },
+    );
+
+    // 44. challenge_resolve
+    api.registerTool(
+      {
+        name: "challenge_resolve",
+        label: "Resolve Challenge",
+        description: "Resolve a pending challenge. If upheld, belief is demoted. If rejected, challenger loses stake.",
+        parameters: Type.Object({
+          challenge_id: Type.String({ description: "UUID of the challenge" }),
+          upheld: Type.Boolean({ description: "Whether the challenge is upheld" }),
+          resolution_reasoning: Type.String({ description: "Explanation" }),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "challenge_resolve", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "challenge_resolve" },
+    );
+
+    // 45. challenge_get
+    api.registerTool(
+      {
+        name: "challenge_get",
+        label: "Get Challenge",
+        description: "Get details of a specific challenge by ID.",
+        parameters: Type.Object({
+          challenge_id: Type.String({ description: "UUID of the challenge" }),
+        }),
+        async execute(_id: string, params: { challenge_id: string }) {
+          const result = await mcpCall(cfg, "challenge_get", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "challenge_get" },
+    );
+
+    // 46. challenges_list
+    api.registerTool(
+      {
+        name: "challenges_list",
+        label: "List Challenges",
+        description: "List all challenges for a belief.",
+        parameters: Type.Object({
+          belief_id: Type.String({ description: "UUID of the belief" }),
+        }),
+        async execute(_id: string, params: { belief_id: string }) {
+          const result = await mcpCall(cfg, "challenges_list", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "challenges_list" },
+    );
+
+    // =====================================================================
+    // BACKUP TOOLS — Erasure-coded resilient storage
+    // =====================================================================
+
+    // 47. backup_create
+    api.registerTool(
+      {
+        name: "backup_create",
+        label: "Create Backup",
+        description:
+          "Create a backup of beliefs with erasure-coded shards. " +
+          "Redundancy levels: minimal (3-of-5), personal (5-of-8), federation (8-of-12), paranoid (12-of-20).",
+        parameters: Type.Object({
+          redundancy: Type.Optional(stringEnum(["minimal", "personal", "federation", "paranoid"], { description: "Redundancy level" })),
+          domain_filter: Type.Optional(Type.Array(Type.String(), { description: "Only back up beliefs in these domains" })),
+          min_confidence: Type.Optional(Type.Number({ description: "Min overall confidence to include" })),
+          encrypt: Type.Optional(Type.Boolean({ description: "Encrypt the backup payload" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "backup_create", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "backup_create" },
+    );
+
+    // 48. backup_verify
+    api.registerTool(
+      {
+        name: "backup_verify",
+        label: "Verify Backup",
+        description: "Verify integrity of a backup set — checks each shard's checksum.",
+        parameters: Type.Object({
+          backup_set_id: Type.String({ description: "UUID of the backup set" }),
+        }),
+        async execute(_id: string, params: { backup_set_id: string }) {
+          const result = await mcpCall(cfg, "backup_verify", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "backup_verify" },
+    );
+
+    // 49. backup_list
+    api.registerTool(
+      {
+        name: "backup_list",
+        label: "List Backups",
+        description: "List backup sets ordered by creation date.",
+        parameters: Type.Object({
+          limit: Type.Optional(Type.Integer({ description: "Max results (default: 20)" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "backup_list", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "backup_list" },
+    );
+
+    // 50. backup_get
+    api.registerTool(
+      {
+        name: "backup_get",
+        label: "Get Backup",
+        description: "Get details of a specific backup set by ID.",
+        parameters: Type.Object({
+          backup_set_id: Type.String({ description: "UUID of the backup set" }),
+        }),
+        async execute(_id: string, params: { backup_set_id: string }) {
+          const result = await mcpCall(cfg, "backup_get", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "backup_get" },
+    );
+
+    // =====================================================================
+    // VKB EXTRAS — Session & exchange management
+    // =====================================================================
+
+    // 51. session_get
+    api.registerTool(
+      {
+        name: "session_get",
+        label: "Get Session",
+        description: "Get session details including optional recent exchanges.",
+        parameters: Type.Object({
+          session_id: Type.String({ description: "UUID of the session" }),
+          include_exchanges: Type.Optional(Type.Boolean({ description: "Include recent exchanges" })),
+          exchange_limit: Type.Optional(Type.Integer({ description: "Max exchanges (default: 10)" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "session_get", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "session_get" },
+    );
+
+    // 52. session_list
+    api.registerTool(
+      {
+        name: "session_list",
+        label: "List Sessions",
+        description: "List sessions with filters. Useful for reviewing past conversations.",
+        parameters: Type.Object({
+          platform: Type.Optional(Type.String({ description: "Filter by platform" })),
+          project_context: Type.Optional(Type.String({ description: "Filter by project" })),
+          status: Type.Optional(stringEnum(["active", "completed", "abandoned"], { description: "Filter by status" })),
+          limit: Type.Optional(Type.Integer({ description: "Max results (default: 20)" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "session_list", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "session_list" },
+    );
+
+    // 53. session_find_by_room
+    api.registerTool(
+      {
+        name: "session_find_by_room",
+        label: "Find Session by Room",
+        description: "Find active session by external room/channel ID. Use to resume existing sessions.",
+        parameters: Type.Object({
+          external_room_id: Type.String({ description: "Room/channel ID" }),
+        }),
+        async execute(_id: string, params: { external_room_id: string }) {
+          const result = await mcpCall(cfg, "session_find_by_room", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "session_find_by_room" },
+    );
+
+    // 54. exchange_list
+    api.registerTool(
+      {
+        name: "exchange_list",
+        label: "List Exchanges",
+        description: "Get exchanges from a session. Useful for reviewing conversation history.",
+        parameters: Type.Object({
+          session_id: Type.String({ description: "UUID of the session" }),
+          limit: Type.Optional(Type.Integer({ description: "Max exchanges" })),
+          offset: Type.Optional(Type.Integer({ description: "Offset (default: 0)" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "exchange_list", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "exchange_list" },
+    );
+
+    // 55. pattern_list
+    api.registerTool(
+      {
+        name: "pattern_list",
+        label: "List Patterns",
+        description: "List patterns with filters. Review to understand user preferences and behaviors.",
+        parameters: Type.Object({
+          type: Type.Optional(Type.String({ description: "Filter by pattern type" })),
+          status: Type.Optional(stringEnum(["emerging", "established", "fading", "archived"], { description: "Filter by status" })),
+          min_confidence: Type.Optional(Type.Number({ description: "Min confidence" })),
+          limit: Type.Optional(Type.Integer({ description: "Max results (default: 20)" })),
+        }),
+        async execute(_id: string, params: Record<string, unknown>) {
+          const result = await mcpCall(cfg, "pattern_list", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "pattern_list" },
+    );
+
+    // 56. insight_list
+    api.registerTool(
+      {
+        name: "insight_list",
+        label: "List Insights",
+        description: "List insights extracted from a session.",
+        parameters: Type.Object({
+          session_id: Type.String({ description: "Session to get insights from" }),
+        }),
+        async execute(_id: string, params: { session_id: string }) {
+          const result = await mcpCall(cfg, "insight_list", params);
+          return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }], details: result };
+        },
+      },
+      { name: "insight_list" },
     );
 
     // =====================
@@ -830,7 +1647,18 @@ const valencePlugin = {
 
     // System prompt: explain Valence tools to the agent
     const valenceSystemPrompt = [
-      "You have access to a structured knowledge base (Valence) through belief_query, belief_search, belief_create, belief_supersede, entity_search, entity_get, tension_list, tension_resolve, pattern_search, pattern_record, pattern_reinforce, insight_extract, confidence_explain, and memory_forget tools.",
+      "You have access to a structured knowledge base (Valence) with tools for: " +
+      "knowledge management (belief_query, belief_search, belief_create, belief_supersede, belief_get, belief_archive, confidence_explain), " +
+      "entities (entity_search, entity_get), tensions (tension_list, tension_resolve), " +
+      "patterns (pattern_search, pattern_record, pattern_reinforce, pattern_list), " +
+      "insights (insight_extract, insight_list), sessions (session_get, session_list, exchange_list), " +
+      "trust & verification (trust_check, belief_corroboration, corroboration_submit, verification_submit/accept/get/list/summary), " +
+      "sharing (belief_share, belief_shares_list, belief_share_revoke), " +
+      "disputes (dispute_submit, dispute_resolve, dispute_get), " +
+      "reputation (reputation_get, reputation_events, bounty_get, bounty_list, calibration_run, calibration_history), " +
+      "rewards (rewards_pending, reward_claim, rewards_claim_all, transfer_history, velocity_status), " +
+      "consensus (consensus_status, challenge_submit, challenge_resolve, challenge_get, challenges_list), " +
+      "and backup (backup_create, backup_verify, backup_list, backup_get).",
       "Use belief_query or belief_search BEFORE answering questions about past decisions, user preferences, technical approaches, or any topic that may have been discussed before.",
       "Use belief_create proactively when decisions are made, preferences are expressed, or important facts are shared.",
       "You also have memory_search and memory_get for file-based memory (MEMORY.md) as a fallback.",
