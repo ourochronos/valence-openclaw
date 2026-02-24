@@ -11,6 +11,7 @@ import { Type } from "@sinclair/typebox";
 import { mcpCall, healthCheck } from "./client.js";
 import { valenceConfigSchema } from "./config.js";
 import { registerSessionHooks } from "./session-hooks.js";
+import { registerInferenceEndpoint } from "./inference.js";
 
 // --- Tool Helpers ---
 
@@ -899,6 +900,18 @@ const valencePlugin = {
     if (cfg.sessionIngestion) {
       registerSessionHooks(api, cfg, log);
       log.info("valence-sessions: session ingestion hooks registered");
+    }
+
+    // =====================
+    // INFERENCE ENDPOINT — Gateway proxy for Valence compilation
+    // =====================
+
+    if (cfg.inferenceEnabled && cfg.serverUrl) {
+      registerInferenceEndpoint(api, {
+        inferenceModel: cfg.inferenceModel,
+        serverUrl: cfg.serverUrl,
+        authToken: cfg.authToken,
+      });
     }
   },
 };
