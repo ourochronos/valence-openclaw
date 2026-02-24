@@ -21,6 +21,7 @@
     "index.ts",
     "client.ts",
     "config.ts",
+    "session-hooks.ts",
     "openclaw.plugin.json",
     "package.json"
   ],
