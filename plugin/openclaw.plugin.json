@@ -65,6 +65,15 @@
       "label": "Include System Messages",
       "advanced": true,
       "help": "Include system messages in session transcripts (default: true)"
+    },
+    "inferenceEnabled": {
+      "label": "Inference Proxy",
+      "help": "Let Valence use OpenClaw's models for knowledge compilation"
+    },
+    "inferenceModel": {
+      "label": "Inference Model",
+      "placeholder": "github-copilot/gpt-4.1-mini",
+      "help": "Provider/model ID for compilation (e.g. github-copilot/gpt-4.1-mini)"
     }
   },
   "configSchema": {
@@ -110,6 +119,13 @@
       },
       "includeSystemMessages": {
         "type": "boolean"
+      },
+      "inferenceEnabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "inferenceModel": {
+        "type": "string"
       }
     }
   }
