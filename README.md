@@ -32,6 +32,35 @@ In your OpenClaw plugin config, set:
 | `recallMinScore` | `0.3` | Min relevance score for auto-recall (reserved) |
 | `staleSessionMinutes` | `30` | Stale session threshold (reserved) |
 | `includeSystemMessages` | `true` | Capture system messages (reserved) |
+| `inferenceEnabled` | `true` | Enable inference proxy endpoint for Valence compilation |
+| `inferenceModel` | — | Model for compilation (e.g. `github-copilot/gpt-4.1-mini`) |
+
+## Inference Endpoint
+
+When `inferenceEnabled` is true, the plugin registers a `POST /valence/inference` endpoint on the OpenClaw gateway. This allows Valence to use OpenClaw's configured model providers for knowledge compilation without needing its own LLM credentials.
+
+**Request:**
+```json
+{
+  "prompt": "Compile this source into a knowledge article...",
+  "system": "Optional system prompt override"
+}
+```
+
+**Response:**
+```json
+{
+  "text": "The compiled article content..."
+}
+```
+
+**Configure Valence to use the callback:**
+```bash
+valence config inference callback --url http://localhost:3457/valence/inference
+```
+(Replace `3457` with your OpenClaw gateway port)
+
+The endpoint supports OpenAI-compatible providers: `openai-completions`, `openai-responses`, `github-copilot`, and `ollama`.
 
 ## Requirements
 

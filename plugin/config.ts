@@ -16,6 +16,8 @@ export type ValenceConfig = {
   staleSessionMinutes: number;
   autoCompileOnFlush: boolean;
   includeSystemMessages: boolean;
+  inferenceEnabled: boolean;
+  inferenceModel?: string;
 };
 
 export const valenceConfigSchema = {
@@ -42,6 +44,8 @@ export const valenceConfigSchema = {
       staleSessionMinutes: typeof raw.staleSessionMinutes === "number" ? raw.staleSessionMinutes : 30, // TODO: wire to session flush-stale cron/timer
       autoCompileOnFlush: raw.autoCompileOnFlush !== false,
       includeSystemMessages: raw.includeSystemMessages !== false, // TODO: filter system messages in session hooks
+      inferenceEnabled: typeof raw.inferenceEnabled === "boolean" ? raw.inferenceEnabled : true,
+      inferenceModel: typeof raw.inferenceModel === "string" ? raw.inferenceModel : undefined,
     };
   },
 };
