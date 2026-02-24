@@ -68,49 +68,6 @@ export async function mcpCall(
 }
 
 /**
- * List beliefs via MCP tool (for bulk operations like MEMORY.md sync).
- * Uses belief_search (semantic) with a broad query and min_similarity=0
- * to fetch all active beliefs sorted by confidence.
- */
-export async function listBeliefs(
-  cfg: ValenceConfig,
-  params: { limit?: number; min_confidence?: number } = {},
-): Promise<{ beliefs: Record<string, unknown>[]; total: number }> {
-  const result = (await mcpCall(cfg, "belief_search", {
-    query: "knowledge preferences decisions architecture identity",
-    limit: params.limit ?? 100,
-    min_similarity: 0.0,
-    min_confidence: params.min_confidence ?? 0,
-    include_archived: false,
-    ranking: {
-      confidence_weight: 0.7,
-      recency_weight: 0.3,
-      semantic_weight: 0.0,
-    },
-  })) as Record<string, unknown>;
-
-  const beliefs = (result.beliefs ?? []) as Record<string, unknown>[];
-  return { beliefs, total: beliefs.length };
-}
-
-/**
- * List patterns via MCP tool (for bulk operations like MEMORY.md sync).
- */
-export async function listPatterns(
-  cfg: ValenceConfig,
-  params: { limit?: number; min_confidence?: number } = {},
-): Promise<{ patterns: Record<string, unknown>[] }> {
-  const result = (await mcpCall(cfg, "pattern_list", {
-    limit: params.limit ?? 30,
-    min_confidence: params.min_confidence ?? 0,
-  })) as Record<string, unknown>;
-
-  return {
-    patterns: (result.patterns ?? []) as Record<string, unknown>[],
-  };
-}
-
-/**
  * Check Valence server health.
  */
 export async function healthCheck(
