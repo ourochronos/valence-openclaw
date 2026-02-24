@@ -31,16 +31,17 @@ export const valenceConfigSchema = {
       autoRecall: raw.autoRecall !== false,
       autoCapture: raw.autoCapture === true,
       recallMaxResults: typeof raw.recallMaxResults === "number" ? raw.recallMaxResults : 5,
-      recallMinScore: typeof raw.recallMinScore === "number" ? raw.recallMinScore : 0.3,
+      // Reserved for future use — parsed but not yet wired to behavior
+      recallMinScore: typeof raw.recallMinScore === "number" ? raw.recallMinScore : 0.3, // TODO: wire to knowledge_search min_score filter
       captureDomains: Array.isArray(raw.captureDomains)
         ? raw.captureDomains.map(String)
-        : ["conversations"],
-      memoryMdSync: raw.memoryMdSync !== false,
-      memoryMdPath: typeof raw.memoryMdPath === "string" ? raw.memoryMdPath : "MEMORY.md",
+        : ["conversations"], // TODO: wire to memory_store tags on auto-capture
+      memoryMdSync: raw.memoryMdSync !== false, // TODO: implement MEMORY.md sync from Valence
+      memoryMdPath: typeof raw.memoryMdPath === "string" ? raw.memoryMdPath : "MEMORY.md", // TODO: used when memoryMdSync is implemented
       sessionIngestion: raw.sessionIngestion !== false,
-      staleSessionMinutes: typeof raw.staleSessionMinutes === "number" ? raw.staleSessionMinutes : 30,
+      staleSessionMinutes: typeof raw.staleSessionMinutes === "number" ? raw.staleSessionMinutes : 30, // TODO: wire to session flush-stale cron/timer
       autoCompileOnFlush: raw.autoCompileOnFlush !== false,
-      includeSystemMessages: raw.includeSystemMessages !== false,
+      includeSystemMessages: raw.includeSystemMessages !== false, // TODO: filter system messages in session hooks
     };
   },
 };
