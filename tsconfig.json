@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "declaration": false,
+    "outDir": "dist",
+    "rootDir": "plugin",
+    "baseUrl": ".",
+    "paths": {
+      "openclaw/plugin-sdk": ["/opt/homebrew/lib/node_modules/openclaw/dist/plugin-sdk/index.d.ts"]
+    }
+  },
+  "include": ["plugin/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
