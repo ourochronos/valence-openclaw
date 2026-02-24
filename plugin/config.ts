@@ -12,6 +12,10 @@ export type ValenceConfig = {
   captureDomains: string[];
   memoryMdSync: boolean;
   memoryMdPath: string;
+  sessionIngestion: boolean;
+  staleSessionMinutes: number;
+  autoCompileOnFlush: boolean;
+  includeSystemMessages: boolean;
 };
 
 export const valenceConfigSchema = {
@@ -33,6 +37,10 @@ export const valenceConfigSchema = {
         : ["conversations"],
       memoryMdSync: raw.memoryMdSync !== false,
       memoryMdPath: typeof raw.memoryMdPath === "string" ? raw.memoryMdPath : "MEMORY.md",
+      sessionIngestion: raw.sessionIngestion !== false,
+      staleSessionMinutes: typeof raw.staleSessionMinutes === "number" ? raw.staleSessionMinutes : 30,
+      autoCompileOnFlush: raw.autoCompileOnFlush !== false,
+      includeSystemMessages: raw.includeSystemMessages !== false,
     };
   },
 };

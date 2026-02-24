@@ -46,6 +46,25 @@
       "advanced": true,
       "placeholder": "MEMORY.md",
       "help": "Relative path for the MEMORY.md DR file"
+    },
+    "sessionIngestion": {
+      "label": "Session Ingestion",
+      "help": "Capture conversations as Valence sources for compilation into knowledge articles"
+    },
+    "staleSessionMinutes": {
+      "label": "Stale Session Threshold",
+      "advanced": true,
+      "help": "Minutes of inactivity before a session is considered stale (default: 30)"
+    },
+    "autoCompileOnFlush": {
+      "label": "Auto-Compile on Flush",
+      "advanced": true,
+      "help": "Automatically trigger compilation when flushing sessions (default: true)"
+    },
+    "includeSystemMessages": {
+      "label": "Include System Messages",
+      "advanced": true,
+      "help": "Include system messages in session transcripts (default: true)"
     }
   },
   "configSchema": {
@@ -79,6 +98,18 @@
       },
       "memoryMdPath": {
         "type": "string"
+      },
+      "sessionIngestion": {
+        "type": "boolean"
+      },
+      "staleSessionMinutes": {
+        "type": "number"
+      },
+      "autoCompileOnFlush": {
+        "type": "boolean"
+      },
+      "includeSystemMessages": {
+        "type": "boolean"
       }
     }
   }
