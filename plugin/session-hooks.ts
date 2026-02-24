@@ -20,12 +20,11 @@ export function registerSessionHooks(
   api.on("session_start", async (event, ctx) => {
     try {
       await restCall(cfg, "POST", "/api/v1/sessions", {
-        session_id: ctx.sessionKey || ctx.sessionId || event.sessionId,
+        session_id: ctx.sessionId || event.sessionId,
         platform: "openclaw",
-        channel: ctx.messageProvider || "unknown",
+        channel: "unknown",
         metadata: {
           agent_id: ctx.agentId,
-          workspace: ctx.workspaceDir,
         },
       });
     } catch (err) {
@@ -91,7 +90,7 @@ export function registerSessionHooks(
   // 5. session_end — Finalize session
   api.on("session_end", async (event, ctx) => {
     try {
-      const sessionId = ctx.sessionKey || ctx.sessionId || event.sessionId;
+      const sessionId = ctx.sessionId || event.sessionId;
       if (!sessionId) return;
 
       await restCall(cfg, "POST", `/api/v1/sessions/${encodeURIComponent(sessionId)}/finalize`);
