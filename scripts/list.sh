@@ -1,16 +1,12 @@
 #!/bin/bash
-# List recent Valence beliefs
-# Usage: ./list.sh [count]
+# List knowledge articles
+# Usage: ./list.sh [limit]
 
 set -e
 
-COUNT="${1:-10}"
-
-WORKSPACE="${WORKSPACE:-$HOME/.openclaw/workspace}"
-cd "$WORKSPACE"
-source .venv/bin/activate
+LIMIT="${1:-20}"
 
 export VKB_DB_PORT=5433
 export VKB_DB_PASSWORD=valence
 
-valence list -n "$COUNT"
+valence articles list -n "$LIMIT"

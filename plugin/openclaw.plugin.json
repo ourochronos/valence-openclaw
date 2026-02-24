@@ -15,39 +15,31 @@
     },
     "autoRecall": {
       "label": "Auto-Recall",
-      "help": "Inject relevant beliefs into context before agent runs"
+      "help": "Inject relevant memories into context before agent runs"
     },
     "autoCapture": {
       "label": "Auto-Capture",
-      "help": "Extract insights from conversations as beliefs"
-    },
-    "sessionTracking": {
-      "label": "Session Tracking",
-      "help": "Map OpenClaw sessions to Valence session lifecycle"
-    },
-    "exchangeRecording": {
-      "label": "Exchange Recording",
-      "help": "Record conversation turns as Valence exchanges"
+      "help": "Extract insights from conversations as memories"
     },
     "recallMaxResults": {
       "label": "Recall Max Results",
       "advanced": true,
-      "help": "Maximum beliefs to inject on auto-recall"
+      "help": "Maximum memories to inject on auto-recall (default: 5)"
     },
     "recallMinScore": {
       "label": "Recall Min Score",
       "advanced": true,
-      "help": "Minimum relevance score for auto-recall (0-1)"
+      "help": "Minimum relevance score for auto-recall 0-1 (default: 0.3)"
     },
     "captureDomains": {
-      "label": "Default Capture Domains",
+      "label": "Default Capture Tags",
       "advanced": true,
-      "help": "Default domain path for auto-captured beliefs"
+      "help": "Default tags for auto-captured memories"
     },
     "memoryMdSync": {
       "label": "MEMORY.md Sync",
       "advanced": true,
-      "help": "Sync MEMORY.md from Valence beliefs as a disaster-recovery fallback"
+      "help": "Sync MEMORY.md from Valence knowledge as a disaster-recovery fallback"
     },
     "memoryMdPath": {
       "label": "MEMORY.md Path",
@@ -70,12 +62,6 @@
         "type": "boolean"
       },
       "autoCapture": {
-        "type": "boolean"
-      },
-      "sessionTracking": {
-        "type": "boolean"
-      },
-      "exchangeRecording": {
         "type": "boolean"
       },
       "recallMaxResults": {
