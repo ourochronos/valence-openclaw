@@ -143,7 +143,7 @@ export function registerSessionHooks(
   // 7. subagent_ended — Finalize child session
   api.on("subagent_ended", async (event) => {
     try {
-      const childId = event.targetSessionKey || event.childSessionKey;
+      const childId = event.targetSessionKey;
       if (!childId) return;
 
       await restCall(cfg, "POST", `/api/v1/sessions/${encodeURIComponent(childId)}/finalize`);
