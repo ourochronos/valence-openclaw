@@ -74,7 +74,7 @@ export function registerSessionHooks(
       const sessionId = currentSessionId || ctx.sessionKey || ctx.sessionId;
       if (!sessionId) return;
 
-      const content = event.lastAssistant || (event.assistantTexts || []).join("\n");
+      const content = (event.lastAssistant != null ? String(event.lastAssistant) : null) || (event.assistantTexts || []).join("\n");
       if (!content) return;
 
       await restCall(cfg, "POST", `/api/v1/sessions/${encodeURIComponent(sessionId)}/messages`, {
