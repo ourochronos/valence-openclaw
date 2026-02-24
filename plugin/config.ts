@@ -7,8 +7,6 @@ export type ValenceConfig = {
   authToken?: string;
   autoRecall: boolean;
   autoCapture: boolean;
-  sessionTracking: boolean;
-  exchangeRecording: boolean;
   recallMaxResults: number;
   recallMinScore: number;
   captureDomains: string[];
@@ -28,8 +26,6 @@ export const valenceConfigSchema = {
       authToken,
       autoRecall: raw.autoRecall !== false,
       autoCapture: raw.autoCapture !== false,
-      sessionTracking: raw.sessionTracking !== false,
-      exchangeRecording: raw.exchangeRecording !== false,
       recallMaxResults: typeof raw.recallMaxResults === "number" ? raw.recallMaxResults : 5,
       recallMinScore: typeof raw.recallMinScore === "number" ? raw.recallMinScore : 0.3,
       captureDomains: Array.isArray(raw.captureDomains)
