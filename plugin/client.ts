@@ -94,3 +94,32 @@ export async function healthCheck(
     return { ok: false, error: String(err) };
   }
 }
+
+/**
+ * Call a Valence REST endpoint (not MCP).
+ * Used for session ingestion endpoints that are plain REST.
+ */
+export async function restCall(
+  cfg: ValenceConfig,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<unknown> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (cfg.authToken) headers["Authorization"] = `Bearer ${cfg.authToken}`;
+
+  const resp = await fetch(`${cfg.serverUrl}${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(30_000),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => "");
+    throw new Error(`Valence REST ${resp.status}: ${text}`);
+  }
+
+  if (resp.status === 204) return {};
+  return resp.json();
+}

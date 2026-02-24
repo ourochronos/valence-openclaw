@@ -10,6 +10,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { Type } from "@sinclair/typebox";
 import { mcpCall, healthCheck } from "./client.js";
 import { valenceConfigSchema } from "./config.js";
+import { registerSessionHooks } from "./session-hooks.js";
 
 // --- Tool Helpers ---
 
@@ -889,6 +890,15 @@ const valencePlugin = {
       },
       { commands: ["valence"] },
     );
+
+    // =====================
+    // SESSION HOOKS — Capture conversations as sources
+    // =====================
+
+    if (cfg.sessionIngestion) {
+      registerSessionHooks(api, cfg, log);
+      log.info("valence-sessions: session ingestion hooks registered");
+    }
   },
 };
 
