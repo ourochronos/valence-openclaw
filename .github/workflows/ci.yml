@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        working-directory: plugin
+        run: npm ci
+
+      - name: Install OpenClaw types (for type-checking)
+        run: npm install -g openclaw || true
+
+      - name: Type check
+        run: npx tsc --noEmit || echo "::warning::TypeScript check failed (openclaw types may not be available in CI)"

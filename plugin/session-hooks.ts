@@ -8,6 +8,13 @@ import type { ValenceConfig } from "./config.js";
 import { restCall } from "./client.js";
 
 /**
+ * Module-level session tracking.
+ * Maps channel/provider info to sessionId for cross-hook routing.
+ */
+let currentSessionId: string | undefined;
+let currentChannel: string = "unknown";
+
+/**
  * Register all session lifecycle hooks.
  * Every hook is wrapped in try/catch — session ingestion MUST NOT break the main agent flow.
  */
@@ -16,16 +23,27 @@ export function registerSessionHooks(
   cfg: ValenceConfig,
   log: { info: (msg: string) => void; warn: (msg: string) => void },
 ): void {
+  // 0. before_agent_start — Capture session metadata for other hooks
+  api.on("before_agent_start", async (_event, ctx) => {
+    try {
+      if (ctx.sessionKey || ctx.sessionId) {
+        currentSessionId = ctx.sessionKey || ctx.sessionId;
+        currentChannel = ctx.messageProvider || "unknown";
+      }
+    } catch (err) {
+      log.warn(`valence-sessions: before_agent_start tracking failed: ${String(err)}`);
+    }
+  });
+
   // 1. session_start — Create/resume session
   api.on("session_start", async (event, ctx) => {
     try {
       await restCall(cfg, "POST", "/api/v1/sessions", {
-        session_id: ctx.sessionKey || ctx.sessionId || event.sessionId,
+        session_id: ctx.sessionId || event.sessionId,
         platform: "openclaw",
-        channel: ctx.messageProvider || "unknown",
+        channel: "unknown",
         metadata: {
           agent_id: ctx.agentId,
-          workspace: ctx.workspaceDir,
         },
       });
     } catch (err) {
@@ -36,7 +54,7 @@ export function registerSessionHooks(
   // 2. message_received — Append user message
   api.on("message_received", async (event, ctx) => {
     try {
-      const sessionId = ctx.sessionKey || ctx.sessionId;
+      const sessionId = currentSessionId;
       if (!sessionId || !event.content) return;
 
       await restCall(cfg, "POST", `/api/v1/sessions/${encodeURIComponent(sessionId)}/messages`, {
@@ -53,10 +71,10 @@ export function registerSessionHooks(
   // 3. llm_output — Append assistant message
   api.on("llm_output", async (event, ctx) => {
     try {
-      const sessionId = ctx.sessionKey || ctx.sessionId;
+      const sessionId = currentSessionId || ctx.sessionKey || ctx.sessionId;
       if (!sessionId) return;
 
-      const content = event.lastAssistant || (event.assistantTexts || []).join("\n");
+      const content = (event.lastAssistant != null ? String(event.lastAssistant) : null) || (event.assistantTexts || []).join("\n");
       if (!content) return;
 
       await restCall(cfg, "POST", `/api/v1/sessions/${encodeURIComponent(sessionId)}/messages`, {
@@ -77,7 +95,7 @@ export function registerSessionHooks(
   // 4. before_compaction — Flush session (PRIMARY flush trigger)
   api.on("before_compaction", async (_event, ctx) => {
     try {
-      const sessionId = ctx.sessionKey || ctx.sessionId;
+      const sessionId = currentSessionId || ctx.sessionKey || ctx.sessionId;
       if (!sessionId) return;
 
       const compileParam = cfg.autoCompileOnFlush ? "?compile=true" : "";
@@ -91,7 +109,7 @@ export function registerSessionHooks(
   // 5. session_end — Finalize session
   api.on("session_end", async (event, ctx) => {
     try {
-      const sessionId = ctx.sessionKey || ctx.sessionId || event.sessionId;
+      const sessionId = ctx.sessionId || event.sessionId;
       if (!sessionId) return;
 
       await restCall(cfg, "POST", `/api/v1/sessions/${encodeURIComponent(sessionId)}/finalize`);
@@ -104,19 +122,18 @@ export function registerSessionHooks(
   // 6. subagent_spawned — Create child session with parent link
   api.on("subagent_spawned", async (event, ctx) => {
     try {
-      const parentId = ctx.sessionKey || ctx.sessionId;
+      const parentId = currentSessionId || ctx.sessionKey || ctx.sessionId;
 
       await restCall(cfg, "POST", "/api/v1/sessions", {
         session_id: event.childSessionKey,
         platform: "openclaw",
-        channel: ctx.messageProvider || "unknown",
+        channel: currentChannel,
         metadata: {
           agent_id: event.agentId,
           run_id: event.runId,
         },
         parent_session_id: parentId,
         subagent_label: event.label,
-        subagent_model: event.model,
       });
     } catch (err) {
       log.warn(`valence-sessions: subagent_spawned failed: ${String(err)}`);
@@ -126,7 +143,7 @@ export function registerSessionHooks(
   // 7. subagent_ended — Finalize child session
   api.on("subagent_ended", async (event) => {
     try {
-      const childId = event.targetSessionKey || event.childSessionKey;
+      const childId = event.targetSessionKey;
       if (!childId) return;
 
       await restCall(cfg, "POST", `/api/v1/sessions/${encodeURIComponent(childId)}/finalize`);

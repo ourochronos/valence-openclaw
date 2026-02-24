@@ -724,8 +724,9 @@ const valencePlugin = {
         const memoryContext = results
           .map((r) => {
             const title = r.title ? `**${r.title}**: ` : "";
-            const content = (r.content as string)?.slice(0, 200) ?? "";
-            return `- ${title}${content}`;
+            const content = (r.content as string)?.slice(0, 600) ?? "";
+            const truncated = content.length < ((r.content as string)?.length ?? 0) ? "…" : "";
+            return `- ${title}${content}${truncated}`;
           })
           .join("\n");
 
