@@ -2,9 +2,18 @@
 
 Memory plugin for [OpenClaw](https://github.com/openclaw/openclaw) that connects to [Valence v2](https://github.com/ourochronos/valence) — a knowledge substrate for AI agents.
 
+## Architecture: CLI-Based
+
+This plugin uses the **Valence CLI** (`valence` command) instead of HTTP/MCP. All tool handlers invoke CLI commands with `--json` output. This keeps the plugin thin and aligned with Valence's designed interface.
+
+**Requirements:**
+- `valence` binary must be on PATH
+- Valence server running (localhost or remote)
+- Auth via `VALENCE_TOKEN` and `VALENCE_SERVER_URL` environment variables
+
 ## What it does
 
-- **20 MCP tools** for sources, articles, knowledge search, contentions, admin, and memory
+- **20 tools** for sources, articles, knowledge search, contentions, admin, and memory (CLI-backed)
 - **Auto-recall**: injects relevant knowledge into agent context before each run
 - **Auto-capture**: extracts insights from conversations as memories (opt-in)
 - **Session ingestion**: captures full conversation sessions as Valence sources, compiled into knowledge articles at compaction boundaries
@@ -65,7 +74,42 @@ The endpoint supports OpenAI-compatible providers: `openai-completions`, `openai
 ## Requirements
 
 - [Valence v2](https://github.com/ourochronos/valence) server running
+- `valence` CLI on PATH (`pip install -e ~/projects/valence` or equivalent)
 - OpenClaw 2026.2.22+
+
+## CLI Command Mapping
+
+The plugin translates tool calls to CLI commands:
+
+| Tool | CLI Command | Notes |
+|------|-------------|-------|
+| `source_ingest` | `valence sources ingest <content> --type <type>` | |
+| `source_get` | `valence sources get <id>` | |
+| `source_search` | `valence sources search "<query>"` | |
+| `knowledge_search` | `valence search "<query>"` | |
+| `article_get` | `valence articles get <id> [--provenance]` | |
+| `article_create` | `valence articles create "<content>"` | |
+| `article_compile` | `valence compile [--title "<hint>"] <source_ids...>` | 120s timeout |
+| `article_update` | ❌ Not available via CLI | Use server directly |
+| `article_split` | `valence articles split <id>` | |
+| `article_merge` | ❌ Not available via CLI | Use server directly |
+| `provenance_trace` | `valence provenance trace <id> "<claim>"` | |
+| `contention_list` | `valence conflicts` | Filtering not supported yet |
+| `contention_resolve` | ❌ Not available via CLI | Use server directly |
+| `admin_forget` | ❌ Not available via CLI | Use server directly |
+| `admin_stats` | `valence stats` | |
+| `admin_maintenance` | `valence maintenance run [--all]` | |
+| `memory_store` | `valence sources ingest` (as observation) | Full metadata not supported |
+| `memory_recall` | `valence memory search "<query>"` | |
+| `memory_status` | `valence status` | |
+| `memory_forget` | ❌ Not available via CLI | Use server directly |
+
+**Session hooks:**
+- `session_start` → `valence sessions start <id> --platform openclaw --channel <ch>`
+- `message_received` → `valence sessions append <id> --role user --speaker <spkr> --content "<msg>"`
+- `llm_output` → `valence sessions append <id> --role assistant --speaker <model> --content "<msg>"`
+- `before_compaction` → `valence sessions flush <id>` + optional `compile <id>`
+- `session_end` → `valence sessions finalize <id>`
 
 ## Tools
 
