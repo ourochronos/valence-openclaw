@@ -1,125 +1,120 @@
 /**
- * HTTP client for Valence MCP server.
- * Sends JSON-RPC 2.0 requests to the /api/v1/mcp endpoint.
+ * CLI client for Valence.
+ * Executes valence CLI commands and parses JSON output.
  */
 
+import { execFile, spawn } from "child_process";
+import { promisify } from "util";
 import type { ValenceConfig } from "./config.js";
 
-let requestId = 0;
+const execFileAsync = promisify(execFile);
 
-type McpResponse = {
-  jsonrpc: "2.0";
-  result?: { content?: Array<{ type: string; text: string }>; isError?: boolean };
-  error?: { code: number; message: string; data?: unknown };
-  id: number;
-};
-
-/**
- * Call a Valence MCP tool via HTTP JSON-RPC.
- */
-export async function mcpCall(
-  cfg: ValenceConfig,
-  toolName: string,
-  args: Record<string, unknown>,
-): Promise<unknown> {
-  const id = ++requestId;
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (cfg.authToken) headers["Authorization"] = `Bearer ${cfg.authToken}`;
-
-  const resp = await fetch(`${cfg.serverUrl}/api/v1/mcp`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      method: "tools/call",
-      params: { name: toolName, arguments: args },
-      id,
-    }),
-    signal: AbortSignal.timeout(30_000),
-  });
-
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => "");
-    throw new Error(`Valence HTTP ${resp.status}: ${body}`);
-  }
-
-  const data = (await resp.json()) as McpResponse;
-
-  if (data.error) {
-    throw new Error(`Valence MCP error ${data.error.code}: ${data.error.message}`);
-  }
-
-  if (data.result?.isError) {
-    const text = data.result.content?.map((c) => c.text).join("\n") ?? "Unknown error";
-    throw new Error(`Valence tool error: ${text}`);
-  }
-
-  // Parse and return the tool result
-  const texts = data.result?.content?.filter((c) => c.type === "text").map((c) => c.text) ?? [];
-  if (texts.length === 0) return {};
-
-  // Try to parse as JSON (most Valence tools return JSON)
-  const joined = texts.join("\n");
-  try {
-    return JSON.parse(joined);
-  } catch {
-    return { text: joined };
-  }
+export interface ValenceResult {
+  success: boolean;
+  data?: any;
+  error?: string;
 }
 
 /**
- * Check Valence server health.
+ * Execute a valence CLI command and return parsed JSON output.
+ * Auth token and server URL are passed via environment variables.
  */
-export async function healthCheck(
+export async function valenceExec(
   cfg: ValenceConfig,
-): Promise<{ ok: boolean; version?: string; database?: string; error?: string }> {
-  try {
-    const headers: Record<string, string> = {};
-    if (cfg.authToken) headers["Authorization"] = `Bearer ${cfg.authToken}`;
+  args: string[],
+  options?: { timeout?: number }
+): Promise<ValenceResult> {
+  const env: Record<string, string> = {
+    ...process.env as Record<string, string>,
+    VALENCE_OUTPUT: "json",
+  };
+  if (cfg.serverUrl) env.VALENCE_SERVER_URL = cfg.serverUrl;
+  if (cfg.authToken) env.VALENCE_TOKEN = cfg.authToken;
 
-    const resp = await fetch(`${cfg.serverUrl}/api/v1/health`, {
-      headers,
-      signal: AbortSignal.timeout(5_000),
+  try {
+    const { stdout, stderr } = await execFileAsync("valence", ["--json", ...args], {
+      env,
+      timeout: options?.timeout ?? 30000,
+      maxBuffer: 10 * 1024 * 1024, // 10MB for large search results
     });
 
-    if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}` };
-
-    const data = (await resp.json()) as Record<string, unknown>;
-    return {
-      ok: true,
-      version: String(data.version ?? "unknown"),
-      database: String(data.database ?? "unknown"),
-    };
-  } catch (err) {
-    return { ok: false, error: String(err) };
+    try {
+      const parsed = JSON.parse(stdout);
+      return { success: true, data: parsed };
+    } catch {
+      // CLI returned non-JSON (e.g. plain text success message)
+      return { success: true, data: { text: stdout.trim() } };
+    }
+  } catch (err: any) {
+    const stderr = err.stderr || "";
+    const stdout = err.stdout || "";
+    // Try to parse error JSON from stdout
+    try {
+      const parsed = JSON.parse(stdout);
+      return { success: false, data: parsed, error: parsed.error || stderr };
+    } catch {
+      return { success: false, error: stderr || err.message || String(err) };
+    }
   }
 }
 
 /**
- * Call a Valence REST endpoint (not MCP).
- * Used for session ingestion endpoints that are plain REST.
+ * Execute a valence CLI command with stdin input.
  */
-export async function restCall(
+export async function valenceExecWithStdin(
   cfg: ValenceConfig,
-  method: string,
-  path: string,
-  body?: unknown,
-): Promise<unknown> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (cfg.authToken) headers["Authorization"] = `Bearer ${cfg.authToken}`;
+  args: string[],
+  stdin: string,
+  options?: { timeout?: number }
+): Promise<ValenceResult> {
+  return new Promise((resolve) => {
+    const env: Record<string, string> = {
+      ...process.env as Record<string, string>,
+      VALENCE_OUTPUT: "json",
+    };
+    if (cfg.serverUrl) env.VALENCE_SERVER_URL = cfg.serverUrl;
+    if (cfg.authToken) env.VALENCE_TOKEN = cfg.authToken;
 
-  const resp = await fetch(`${cfg.serverUrl}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(30_000),
+    const proc = spawn("valence", ["--json", ...args], {
+      env,
+      timeout: options?.timeout ?? 30000,
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+    proc.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+
+    proc.on("close", (code) => {
+      try {
+        const parsed = JSON.parse(stdout);
+        resolve({ success: code === 0, data: parsed, error: code !== 0 ? (parsed.error || stderr) : undefined });
+      } catch {
+        resolve({ success: code === 0, data: { text: stdout.trim() }, error: code !== 0 ? stderr : undefined });
+      }
+    });
+
+    proc.on("error", (err) => {
+      resolve({ success: false, error: String(err) });
+    });
+
+    proc.stdin.write(stdin);
+    proc.stdin.end();
   });
+}
 
-  if (!resp.ok) {
-    const text = await resp.text().catch(() => "");
-    throw new Error(`Valence REST ${resp.status}: ${text}`);
+/**
+ * Health check — run `valence status --json`
+ */
+export async function healthCheck(cfg: ValenceConfig): Promise<{ ok: boolean; version?: string; database?: string; error?: string }> {
+  const result = await valenceExec(cfg, ["status"], { timeout: 5000 });
+  if (result.success && result.data) {
+    return { 
+      ok: true, 
+      version: result.data.version || result.data.valence_version,
+      database: result.data.database || result.data.db_name
+    };
   }
-
-  if (resp.status === 204) return {};
-  return resp.json();
+  return { ok: false, error: result.error };
 }
