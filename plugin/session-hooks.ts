@@ -1,11 +1,11 @@
 /**
- * Session ingestion hooks for Valence.
+ * Session ingestion hooks for Valence (CLI backend).
  * Captures conversation sessions as sources for compilation into knowledge articles.
  */
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import type { ValenceConfig } from "./config.js";
-import { restCall } from "./client.js";
+import { valenceExec } from "./client.js";
 
 /**
  * Module-level session tracking.
@@ -13,6 +13,7 @@ import { restCall } from "./client.js";
  */
 let currentSessionId: string | undefined;
 let currentChannel: string = "unknown";
+let currentPlatform: string = "openclaw";
 
 /**
  * Register all session lifecycle hooks.
@@ -38,14 +39,16 @@ export function registerSessionHooks(
   // 1. session_start — Create/resume session
   api.on("session_start", async (event, ctx) => {
     try {
-      await restCall(cfg, "POST", "/api/v1/sessions", {
-        session_id: ctx.sessionId || event.sessionId,
-        platform: "openclaw",
-        channel: "unknown",
-        metadata: {
-          agent_id: ctx.agentId,
-        },
-      });
+      const sessionId = ctx.sessionId || event.sessionId;
+      if (!sessionId) return;
+
+      const args = [
+        "sessions", "start", sessionId,
+        "--platform", currentPlatform,
+        "--channel", currentChannel || "unknown"
+      ];
+
+      await valenceExec(cfg, args);
     } catch (err) {
       log.warn(`valence-sessions: session_start failed: ${String(err)}`);
     }
@@ -57,12 +60,17 @@ export function registerSessionHooks(
       const sessionId = currentSessionId;
       if (!sessionId || !event.content) return;
 
-      await restCall(cfg, "POST", `/api/v1/sessions/${encodeURIComponent(sessionId)}/messages`, {
-        speaker: event.from || "user",
-        role: "user",
-        content: typeof event.content === "string" ? event.content : JSON.stringify(event.content),
-        metadata: event.metadata || {},
-      });
+      const content = typeof event.content === "string" ? event.content : JSON.stringify(event.content);
+      const speaker = event.from || "user";
+
+      const args = [
+        "sessions", "append", sessionId,
+        "--role", "user",
+        "--speaker", speaker,
+        "--content", content
+      ];
+
+      await valenceExec(cfg, args);
     } catch (err) {
       log.warn(`valence-sessions: message_received failed: ${String(err)}`);
     }
@@ -77,16 +85,16 @@ export function registerSessionHooks(
       const content = (event.lastAssistant != null ? String(event.lastAssistant) : null) || (event.assistantTexts || []).join("\n");
       if (!content) return;
 
-      await restCall(cfg, "POST", `/api/v1/sessions/${encodeURIComponent(sessionId)}/messages`, {
-        speaker: event.model || "assistant",
-        role: "assistant",
-        content,
-        metadata: {
-          model: event.model,
-          provider: event.provider,
-          usage: event.usage,
-        },
-      });
+      const speaker = event.model || "assistant";
+
+      const args = [
+        "sessions", "append", sessionId,
+        "--role", "assistant",
+        "--speaker", speaker,
+        "--content", content
+      ];
+
+      await valenceExec(cfg, args);
     } catch (err) {
       log.warn(`valence-sessions: llm_output failed: ${String(err)}`);
     }
@@ -98,9 +106,16 @@ export function registerSessionHooks(
       const sessionId = currentSessionId || ctx.sessionKey || ctx.sessionId;
       if (!sessionId) return;
 
-      const compileParam = cfg.autoCompileOnFlush ? "?compile=true" : "";
-      await restCall(cfg, "POST", `/api/v1/sessions/${encodeURIComponent(sessionId)}/flush${compileParam}`);
-      log.info(`valence-sessions: flushed session ${sessionId} (pre-compaction)`);
+      const args = ["sessions", "flush", sessionId];
+      if (cfg.autoCompileOnFlush) {
+        // Note: CLI flush doesn't have --compile flag, we'd need to call compile separately
+        await valenceExec(cfg, args);
+        await valenceExec(cfg, ["sessions", "compile", sessionId], { timeout: 120000 });
+        log.info(`valence-sessions: flushed and compiled session ${sessionId} (pre-compaction)`);
+      } else {
+        await valenceExec(cfg, args);
+        log.info(`valence-sessions: flushed session ${sessionId} (pre-compaction)`);
+      }
     } catch (err) {
       log.warn(`valence-sessions: before_compaction flush failed: ${String(err)}`);
     }
@@ -112,7 +127,7 @@ export function registerSessionHooks(
       const sessionId = ctx.sessionId || event.sessionId;
       if (!sessionId) return;
 
-      await restCall(cfg, "POST", `/api/v1/sessions/${encodeURIComponent(sessionId)}/finalize`);
+      await valenceExec(cfg, ["sessions", "finalize", sessionId]);
       log.info(`valence-sessions: finalized session ${sessionId}`);
     } catch (err) {
       log.warn(`valence-sessions: session_end failed: ${String(err)}`);
@@ -122,19 +137,20 @@ export function registerSessionHooks(
   // 6. subagent_spawned — Create child session with parent link
   api.on("subagent_spawned", async (event, ctx) => {
     try {
-      const parentId = currentSessionId || ctx.sessionKey || ctx.sessionId;
+      const parentId = currentSessionId;
+      const childId = event.childSessionKey;
 
-      await restCall(cfg, "POST", "/api/v1/sessions", {
-        session_id: event.childSessionKey,
-        platform: "openclaw",
-        channel: currentChannel,
-        metadata: {
-          agent_id: event.agentId,
-          run_id: event.runId,
-        },
-        parent_session_id: parentId,
-        subagent_label: event.label,
-      });
+      const args = [
+        "sessions", "start", childId,
+        "--platform", currentPlatform,
+        "--channel", currentChannel
+      ];
+
+      if (parentId) {
+        args.push("--parent-session-id", parentId);
+      }
+
+      await valenceExec(cfg, args);
     } catch (err) {
       log.warn(`valence-sessions: subagent_spawned failed: ${String(err)}`);
     }
@@ -146,7 +162,7 @@ export function registerSessionHooks(
       const childId = event.targetSessionKey;
       if (!childId) return;
 
-      await restCall(cfg, "POST", `/api/v1/sessions/${encodeURIComponent(childId)}/finalize`);
+      await valenceExec(cfg, ["sessions", "finalize", childId]);
     } catch (err) {
       log.warn(`valence-sessions: subagent_ended failed: ${String(err)}`);
     }

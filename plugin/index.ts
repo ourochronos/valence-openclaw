@@ -1,14 +1,14 @@
 /**
- * OpenClaw Memory Plugin: Valence Knowledge Substrate (v2 compatible)
+ * OpenClaw Memory Plugin: Valence Knowledge Substrate (v2 compatible — CLI backend)
  *
- * Exposes Valence v2 MCP tools for OpenClaw agents.
+ * Exposes Valence v2 tools via CLI for OpenClaw agents.
  * Provides: source ingestion, article management, knowledge search,
  * contention resolution, admin tools, and memory wrappers.
  */
 
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { Type } from "@sinclair/typebox";
-import { mcpCall, healthCheck } from "./client.js";
+import { valenceExec, valenceExecWithStdin, healthCheck } from "./client.js";
 import { valenceConfigSchema } from "./config.js";
 import { registerSessionHooks } from "./session-hooks.js";
 import { registerInferenceEndpoint } from "./inference.js";
@@ -24,7 +24,7 @@ function stringEnum<T extends string>(values: readonly T[], opts?: { description
 const valencePlugin = {
   id: "memory-valence",
   name: "Memory (Valence)",
-  description: "Valence v2 knowledge substrate — sources, articles, contentions, memory",
+  description: "Valence v2 knowledge substrate — sources, articles, contentions, memory (CLI backend)",
   kind: "memory" as const,
   configSchema: valenceConfigSchema,
 
@@ -33,7 +33,7 @@ const valencePlugin = {
     const log = api.logger;
 
     // =====================
-    // TOOLS — v2 Substrate (20 tools)
+    // TOOLS — v2 Substrate (20 tools) — CLI-backed
     // =====================
 
     // =========================================================================
@@ -64,10 +64,18 @@ const valencePlugin = {
           metadata: Type.Optional(Type.Any({ description: "Optional arbitrary metadata (JSON object)" })),
         }),
         async execute(_id: string, params: Record<string, unknown>) {
-          const result = await mcpCall(cfg, "source_ingest", params);
+          const args = ["sources", "ingest", String(params.content)];
+          if (params.source_type) args.push("--type", String(params.source_type));
+          if (params.title) args.push("--title", String(params.title));
+          if (params.url) args.push("--url", String(params.url));
+          // Note: CLI doesn't support arbitrary metadata yet — this is a known limitation
+
+          const result = await valenceExec(cfg, args);
+          if (!result.success) throw new Error(result.error || "source_ingest failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -84,10 +92,12 @@ const valencePlugin = {
           source_id: Type.String({ description: "UUID of the source" }),
         }),
         async execute(_id: string, params: { source_id: string }) {
-          const result = await mcpCall(cfg, "source_get", params);
+          const result = await valenceExec(cfg, ["sources", "get", params.source_id]);
+          if (!result.success) throw new Error(result.error || "source_get failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -109,10 +119,15 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: { query: string; limit?: number }) {
-          const result = await mcpCall(cfg, "source_search", params);
+          const args = ["sources", "search", params.query];
+          if (params.limit) args.push("--limit", String(params.limit));
+
+          const result = await valenceExec(cfg, args);
+          if (!result.success) throw new Error(result.error || "source_search failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -148,10 +163,16 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: Record<string, unknown>) {
-          const result = await mcpCall(cfg, "knowledge_search", params);
+          const args = ["search", String(params.query)];
+          if (params.limit) args.push("--limit", String(params.limit));
+          // Note: include_sources and session_id aren't yet supported in CLI
+
+          const result = await valenceExec(cfg, args);
+          if (!result.success) throw new Error(result.error || "knowledge_search failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -178,10 +199,15 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: { article_id: string; include_provenance?: boolean }) {
-          const result = await mcpCall(cfg, "article_get", params);
+          const args = ["articles", "get", params.article_id];
+          if (params.include_provenance) args.push("--provenance");
+
+          const result = await valenceExec(cfg, args);
+          if (!result.success) throw new Error(result.error || "article_get failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -218,10 +244,22 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: Record<string, unknown>) {
-          const result = await mcpCall(cfg, "article_create", params);
+          const args = ["articles", "create", String(params.content)];
+          if (params.title) args.push("--title", String(params.title));
+          if (params.author_type) args.push("--author-type", String(params.author_type));
+          if (Array.isArray(params.domain_path)) {
+            for (const domain of params.domain_path) {
+              args.push("--domain", String(domain));
+            }
+          }
+          // Note: source_ids linking not supported via CLI yet
+
+          const result = await valenceExec(cfg, args);
+          if (!result.success) throw new Error(result.error || "article_create failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -245,10 +283,16 @@ const valencePlugin = {
           title_hint: Type.Optional(Type.String({ description: "Optional hint for the article title" })),
         }),
         async execute(_id: string, params: { source_ids: string[]; title_hint?: string }) {
-          const result = await mcpCall(cfg, "article_compile", params);
+          const args = ["compile"];
+          if (params.title_hint) args.push("--title", params.title_hint);
+          args.push(...params.source_ids);
+
+          const result = await valenceExec(cfg, args, { timeout: 120000 }); // 2 minutes for compilation
+          if (!result.success) throw new Error(result.error || "article_compile failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -272,11 +316,8 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: { article_id: string; content: string; source_id?: string }) {
-          const result = await mcpCall(cfg, "article_update", params);
-          return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
-          };
+          // CLI doesn't have article update command yet
+          throw new Error("article_update is not available via CLI — use valence server directly or use article_create + provenance link");
         },
       },
       { name: "article_update" },
@@ -300,10 +341,12 @@ const valencePlugin = {
           article_id: Type.String({ description: "UUID of the article to split" }),
         }),
         async execute(_id: string, params: { article_id: string }) {
-          const result = await mcpCall(cfg, "article_split", params);
+          const result = await valenceExec(cfg, ["articles", "split", params.article_id]);
+          if (!result.success) throw new Error(result.error || "article_split failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -325,11 +368,8 @@ const valencePlugin = {
           article_id_b: Type.String({ description: "UUID of the second article" }),
         }),
         async execute(_id: string, params: { article_id_a: string; article_id_b: string }) {
-          const result = await mcpCall(cfg, "article_merge", params);
-          return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
-          };
+          // CLI doesn't have article merge command yet
+          throw new Error("article_merge is not available via CLI — use valence server directly");
         },
       },
       { name: "article_merge" },
@@ -356,10 +396,12 @@ const valencePlugin = {
           }),
         }),
         async execute(_id: string, params: { article_id: string; claim_text: string }) {
-          const result = await mcpCall(cfg, "provenance_trace", params);
+          const result = await valenceExec(cfg, ["provenance", "trace", params.article_id, params.claim_text]);
+          if (!result.success) throw new Error(result.error || "provenance_trace failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -390,10 +432,15 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: { article_id?: string; status?: string }) {
-          const result = await mcpCall(cfg, "contention_list", params);
+          const args = ["conflicts"];
+          // Note: CLI conflicts command doesn't support filtering yet
+
+          const result = await valenceExec(cfg, args);
+          if (!result.success) throw new Error(result.error || "contention_list failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -422,11 +469,8 @@ const valencePlugin = {
           }),
         }),
         async execute(_id: string, params: { contention_id: string; resolution: string; rationale: string }) {
-          const result = await mcpCall(cfg, "contention_resolve", params);
-          return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
-          };
+          // CLI doesn't have contention resolve command yet
+          throw new Error("contention_resolve is not available via CLI — use valence server directly");
         },
       },
       { name: "contention_resolve" },
@@ -453,11 +497,8 @@ const valencePlugin = {
           target_id: Type.String({ description: "UUID of the record to delete" }),
         }),
         async execute(_id: string, params: { target_type: string; target_id: string }) {
-          const result = await mcpCall(cfg, "admin_forget", params);
-          return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
-          };
+          // CLI doesn't have an explicit forget/delete command for sources/articles yet
+          throw new Error("admin_forget is not available via CLI — use valence server directly");
         },
       },
       { name: "admin_forget" },
@@ -474,10 +515,12 @@ const valencePlugin = {
           "tombstones (last 30 days), and bounded-memory capacity utilization.",
         parameters: Type.Object({}),
         async execute(_id: string, _params: Record<string, never>) {
-          const result = await mcpCall(cfg, "admin_stats", {});
+          const result = await valenceExec(cfg, ["stats"]);
+          if (!result.success) throw new Error(result.error || "admin_stats failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -510,10 +553,20 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: Record<string, unknown>) {
-          const result = await mcpCall(cfg, "admin_maintenance", params);
+          const args = ["maintenance", "run"];
+          
+          // Map params to CLI flags
+          if (params.recompute_scores) args.push("--all"); // CLI doesn't have granular flags, use --all
+          else if (params.process_queue) args.push("--all");
+          else if (params.evict_if_over_capacity) args.push("--retention");
+          else args.push("--all"); // Default to full maintenance
+
+          const result = await valenceExec(cfg, args, { timeout: 120000 }); // 2 minutes for maintenance
+          if (!result.success) throw new Error(result.error || "admin_maintenance failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -559,10 +612,20 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: Record<string, unknown>) {
-          const result = await mcpCall(cfg, "memory_store", params);
+          // Memory import via CLI expects a file path, so we need to use stdin or temp file
+          // For simplicity, we'll ingest as an observation source with tags
+          const args = ["sources", "ingest", String(params.content), "--type", "observation"];
+          if (params.context) args.push("--title", String(params.context));
+          
+          // Note: importance, tags, and supersedes_id are not supported via CLI ingest
+          // These would need to go through memory import with a temp file or stdin
+
+          const result = await valenceExec(cfg, args);
+          if (!result.success) throw new Error(result.error || "memory_store failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -599,10 +662,16 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: Record<string, unknown>) {
-          const result = await mcpCall(cfg, "memory_recall", params);
+          const args = ["memory", "search", String(params.query)];
+          if (params.limit) args.push("--limit", String(params.limit));
+          // Note: min_confidence and tags filtering not supported in CLI yet
+
+          const result = await valenceExec(cfg, args);
+          if (!result.success) throw new Error(result.error || "memory_recall failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -620,10 +689,13 @@ const valencePlugin = {
           "Use this to understand the current state of the memory system.",
         parameters: Type.Object({}),
         async execute(_id: string, _params: Record<string, never>) {
-          const result = await mcpCall(cfg, "memory_status", {});
+          // Use general status command
+          const result = await valenceExec(cfg, ["status"]);
+          if (!result.success) throw new Error(result.error || "memory_status failed");
+
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
           };
         },
       },
@@ -647,11 +719,8 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: { memory_id: string; reason?: string }) {
-          const result = await mcpCall(cfg, "memory_forget", params);
-          return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
-            details: result,
-          };
+          // CLI doesn't have memory forget command yet
+          throw new Error("memory_forget is not available via CLI — use valence server directly");
         },
       },
       { name: "memory_forget" },
@@ -691,14 +760,14 @@ const valencePlugin = {
 
     // System prompt: explain Valence tools to the agent
     const valenceSystemPrompt = [
-      "You have access to a structured knowledge base (Valence v2) with tools for: ",
+      "You have access to a structured knowledge base (Valence v2 via CLI) with tools for: ",
       "sources (source_ingest, source_get, source_search), ",
-      "articles (article_get, article_create, article_compile, article_update, article_split, article_merge), ",
+      "articles (article_get, article_create, article_compile, article_split), ",
       "knowledge search (knowledge_search), ",
       "provenance (provenance_trace), ",
-      "contentions (contention_list, contention_resolve), ",
-      "admin (admin_forget, admin_stats, admin_maintenance), ",
-      "and memory wrappers (memory_store, memory_recall, memory_status, memory_forget). ",
+      "contentions (contention_list), ",
+      "admin (admin_stats, admin_maintenance), ",
+      "and memory wrappers (memory_store, memory_recall, memory_status). ",
       "Use knowledge_search BEFORE answering questions about past discussions or documented topics.",
     ].join("");
 
@@ -713,13 +782,11 @@ const valencePlugin = {
       }
 
       try {
-        const result = (await mcpCall(cfg, "knowledge_search", {
-          query: event.prompt,
-          limit: cfg.recallMaxResults,
-          include_sources: false,
-        })) as Record<string, unknown>;
+        const result = await valenceExec(cfg, ["search", event.prompt, "--limit", String(cfg.recallMaxResults)]);
+        
+        if (!result.success || !result.data?.results) return baseResult;
 
-        const results = (result.results ?? []) as Record<string, unknown>[];
+        const results = result.data.results as Record<string, unknown>[];
         if (results.length === 0) return baseResult;
 
         const memoryContext = results
@@ -773,11 +840,7 @@ const valencePlugin = {
           let captured = 0;
           for (const text of capturable.slice(0, 3)) {
             try {
-              await mcpCall(cfg, "memory_store", {
-                content: text,
-                importance: 0.6,
-                context: "conversation:auto-capture",
-              });
+              await valenceExec(cfg, ["sources", "ingest", text, "--type", "observation", "--title", "conversation:auto-capture"]);
               captured++;
             } catch (err) {
               log.warn(`memory-valence: capture failed: ${String(err)}`);
@@ -824,7 +887,7 @@ const valencePlugin = {
 
     api.registerCli(
       ({ program }) => {
-        const valence = program.command("valence").description("Valence v2 knowledge substrate");
+        const valence = program.command("valence").description("Valence v2 knowledge substrate (CLI)");
 
         valence
           .command("status")
@@ -847,12 +910,15 @@ const valencePlugin = {
           .argument("<query>", "Search query")
           .option("--limit <n>", "Max results", "10")
           .action(async (query: string, opts: { limit: string }) => {
-            const result = (await mcpCall(cfg, "knowledge_search", {
-              query,
-              limit: parseInt(opts.limit, 10),
-            })) as Record<string, unknown>;
+            const result = await valenceExec(cfg, ["search", query, "--limit", opts.limit]);
 
-            const results = (result.results ?? []) as Record<string, unknown>[];
+            if (!result.success) {
+              console.error("Search failed:", result.error);
+              process.exitCode = 1;
+              return;
+            }
+
+            const results = (result.data?.results ?? []) as Record<string, unknown>[];
             if (results.length === 0) {
               console.log("No results found.");
               return;
@@ -873,12 +939,16 @@ const valencePlugin = {
           .option("--title <title>", "Title")
           .action(
             async (content: string, opts: { type: string; title?: string }) => {
-              const result = await mcpCall(cfg, "source_ingest", {
-                content,
-                source_type: opts.type,
-                title: opts.title,
-              });
-              console.log("Source ingested:", result);
+              const args = ["sources", "ingest", content, "--type", opts.type];
+              if (opts.title) args.push("--title", opts.title);
+
+              const result = await valenceExec(cfg, args);
+              if (!result.success) {
+                console.error("Ingest failed:", result.error);
+                process.exitCode = 1;
+                return;
+              }
+              console.log("Source ingested:", result.data);
             },
           );
 
@@ -886,8 +956,13 @@ const valencePlugin = {
           .command("stats")
           .description("Show knowledge system statistics")
           .action(async () => {
-            const result = await mcpCall(cfg, "admin_stats", {});
-            console.log(JSON.stringify(result, null, 2));
+            const result = await valenceExec(cfg, ["stats"]);
+            if (!result.success) {
+              console.error("Stats failed:", result.error);
+              process.exitCode = 1;
+              return;
+            }
+            console.log(JSON.stringify(result.data, null, 2));
           });
       },
       { commands: ["valence"] },
