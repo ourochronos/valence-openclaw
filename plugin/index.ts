@@ -636,13 +636,15 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: Record<string, unknown>) {
-          // Memory import via CLI expects a file path, so we need to use stdin or temp file
-          // For simplicity, we'll ingest as an observation source with tags
-          const args = ["sources", "ingest", String(params.content), "--type", "observation"];
-          if (params.context) args.push("--title", String(params.context));
-          
-          // Note: importance, tags, and supersedes_id are not supported via CLI ingest
-          // These would need to go through memory import with a temp file or stdin
+          const args = ["memory", "store", String(params.content)];
+          if (params.context) args.push("--context", String(params.context));
+          if (params.importance != null) args.push("--importance", String(params.importance));
+          if (params.tags && Array.isArray(params.tags)) {
+            for (const tag of params.tags) {
+              args.push("--tags", String(tag));
+            }
+          }
+          if (params.supersedes_id) args.push("--supersedes-id", String(params.supersedes_id));
 
           const result = await valenceExec(cfg, args);
           if (!result.success) throw new Error(result.error || "memory_store failed");
