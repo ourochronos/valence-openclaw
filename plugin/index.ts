@@ -316,8 +316,15 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: { article_id: string; content: string; source_id?: string }) {
-          // CLI doesn't have article update command yet
-          throw new Error("article_update is not available via CLI — use valence server directly or use article_create + provenance link");
+          const args = ["articles", "update", params.article_id, "--content", params.content];
+          if (params.source_id) args.push("--source-id", params.source_id);
+
+          const result = await valenceExec(cfg, args);
+          if (!result.success) throw new Error(result.error || "article_update failed");
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
+          };
         },
       },
       { name: "article_update" },
@@ -368,8 +375,12 @@ const valencePlugin = {
           article_id_b: Type.String({ description: "UUID of the second article" }),
         }),
         async execute(_id: string, params: { article_id_a: string; article_id_b: string }) {
-          // CLI doesn't have article merge command yet
-          throw new Error("article_merge is not available via CLI — use valence server directly");
+          const result = await valenceExec(cfg, ["articles", "merge", params.article_id_a, params.article_id_b]);
+          if (!result.success) throw new Error(result.error || "article_merge failed");
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
+          };
         },
       },
       { name: "article_merge" },
@@ -469,8 +480,16 @@ const valencePlugin = {
           }),
         }),
         async execute(_id: string, params: { contention_id: string; resolution: string; rationale: string }) {
-          // CLI doesn't have contention resolve command yet
-          throw new Error("contention_resolve is not available via CLI — use valence server directly");
+          const result = await valenceExec(cfg, [
+            "conflicts", "resolve", params.contention_id,
+            "--resolution", params.resolution,
+            "--rationale", params.rationale,
+          ]);
+          if (!result.success) throw new Error(result.error || "contention_resolve failed");
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
+          };
         },
       },
       { name: "contention_resolve" },
@@ -497,8 +516,13 @@ const valencePlugin = {
           target_id: Type.String({ description: "UUID of the record to delete" }),
         }),
         async execute(_id: string, params: { target_type: string; target_id: string }) {
-          // CLI doesn't have an explicit forget/delete command for sources/articles yet
-          throw new Error("admin_forget is not available via CLI — use valence server directly");
+          const cmd = params.target_type === "source" ? "sources" : "articles";
+          const result = await valenceExec(cfg, [cmd, "delete", params.target_id]);
+          if (!result.success) throw new Error(result.error || "admin_forget failed");
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
+          };
         },
       },
       { name: "admin_forget" },
@@ -719,8 +743,14 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: { memory_id: string; reason?: string }) {
-          // CLI doesn't have memory forget command yet
-          throw new Error("memory_forget is not available via CLI — use valence server directly");
+          const args = ["memory", "forget", params.memory_id];
+          if (params.reason) args.push("--reason", params.reason);
+          const result = await valenceExec(cfg, args);
+          if (!result.success) throw new Error(result.error || "memory_forget failed");
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
+            details: result.data,
+          };
         },
       },
       { name: "memory_forget" },
