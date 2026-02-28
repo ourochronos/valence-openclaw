@@ -443,7 +443,7 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: { article_id?: string; status?: string }) {
-          const args = ["conflicts"];
+          const args = ["conflicts", "list"];
           // Note: CLI conflicts command doesn't support filtering yet
 
           const result = await valenceExec(cfg, args);
