@@ -375,7 +375,7 @@ const valencePlugin = {
           article_id_b: Type.String({ description: "UUID of the second article" }),
         }),
         async execute(_id: string, params: { article_id_a: string; article_id_b: string }) {
-          const result = await valenceExec(cfg, ["articles", "merge", params.article_id_a, params.article_id_b]);
+          const result = await valenceExec(cfg, ["articles", "merge", params.article_id_a, params.article_id_b], { timeout: 120000 });
           if (!result.success) throw new Error(result.error || "article_merge failed");
           return {
             content: [{ type: "text" as const, text: JSON.stringify(result.data, null, 2) }],
@@ -636,7 +636,8 @@ const valencePlugin = {
           ),
         }),
         async execute(_id: string, params: Record<string, unknown>) {
-          const args = ["memory", "store", String(params.content)];
+          const content = String(params.content);
+          const args = ["memory", "store", "--stdin"];
           if (params.context) args.push("--context", String(params.context));
           if (params.importance != null) args.push("--importance", String(params.importance));
           if (params.tags && Array.isArray(params.tags)) {
@@ -646,7 +647,7 @@ const valencePlugin = {
           }
           if (params.supersedes_id) args.push("--supersedes-id", String(params.supersedes_id));
 
-          const result = await valenceExec(cfg, args);
+          const result = await valenceExecWithStdin(cfg, args, content);
           if (!result.success) throw new Error(result.error || "memory_store failed");
 
           return {
